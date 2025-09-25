@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from dashboard.dashboard_utils import *
+from dashboard_utils import *
 from playcric import playcricket, config, alleyn
 
 # --- Brand Colours ---
