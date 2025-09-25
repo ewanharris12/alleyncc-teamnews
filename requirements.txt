@@ -1,0 +1,5 @@
+pyplaycricket==0.2
+numpy==1.24.4
+pandas==2.0.3
+requests==2.27.1
+streamlit==1.45.1
