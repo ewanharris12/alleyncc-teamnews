@@ -1,12 +1,12 @@
 import streamlit as st
-import clipboard
+# import clipboard
 from datetime import datetime, timedelta
 import pandas as pd
 
 
-def on_copy_click(text):
-    st.session_state.copied.append(text)
-    clipboard.copy(text)
+# def on_copy_click(text):
+#     st.session_state.copied.append(text)
+#     clipboard.copy(text)
 
 def get_opposition_players(alleyn_object, match_id):
     players = alleyn_object.get_all_players_involved([match_id])
