@@ -47,9 +47,6 @@ st.session_state.selected_team = None
 st.session_state.selected_team_id = None
 st.session_state.button_submit_team = None
 
-st.write("API key:", st.secrets["api_key"])
-st.write("Site ID:", st.secrets["site_id"])
-
 playcricket_object = alleyn.acc(api_key=st.secrets["api_key"], site_id=st.secrets["site_id"])
 
 if "button_clicked" not in st.session_state:
