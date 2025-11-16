@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from dashboard_utils import *
-from playcric import playcricket, config, alleyn
+from playcric import alleyn
 
 # --- Brand Colours ---
 PRIMARY_BLUE = "#1d1b5e"
