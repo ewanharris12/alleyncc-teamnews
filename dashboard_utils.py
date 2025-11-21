@@ -15,7 +15,9 @@ def get_opposition_players(alleyn_object, match_id):
     return opposition_players, opposition_player_ids
 
 def get_opposition_fixtures(alleyn_object, oppo_club_id):
-    oppo_fixtures = alleyn_object.get_all_matches(season=datetime.now().year, site_id=oppo_club_id)
+    # oppo_fixtures = alleyn_object.get_all_matches(season=datetime.now().year, site_id=oppo_club_id)
+    oppo_fixtures = alleyn_object.get_all_matches(season=2025, site_id=oppo_club_id)
+
     oppo_fixtures['saturday_game'] = oppo_fixtures['match_date'].dt.strftime('%A') == 'Saturday'
     oppo_fixtures = oppo_fixtures[oppo_fixtures['saturday_game']]
     oppo_fixtures = oppo_fixtures.loc[oppo_fixtures['game_type'] == 'Standard']
@@ -25,12 +27,12 @@ def get_opposition_fixtures(alleyn_object, oppo_club_id):
 def get_last_saturday():
     today = datetime.now()
     last_saturday = today - timedelta(days=(today.weekday() + 2) % 7)
-    return last_saturday.strftime('%Y-%m-%d')
+    return '2025-08-30' #last_saturday.strftime('%Y-%m-%d')
 
 def get_next_saturday():
     today = datetime.now()
     next_saturday = today + timedelta(days=(5 - today.weekday()) % 7)
-    return next_saturday.strftime('%Y-%m-%d')
+    return '2025-09-06' #next_saturday.strftime('%Y-%m-%d')
 
 def get_relevant_fixtures(playcricket_object, saturday_date, n):
     # st.write(n)
@@ -72,7 +74,8 @@ def get_opposition_players(alleyn_object, match_id):
     return opposition_players, opposition_player_ids
 
 def get_opposition_saturday_fixtures(alleyn_object, oppo_club_id):
-    oppo_fixtures = alleyn_object.get_all_matches(season=datetime.now().year, site_id=oppo_club_id)
+    # oppo_fixtures = alleyn_object.get_all_matches(season=datetime.now().year, site_id=oppo_club_id)
+    oppo_fixtures = alleyn_object.get_all_matches(season=2025, site_id=oppo_club_id)
     oppo_fixtures['saturday_game'] = oppo_fixtures['match_date'].dt.strftime('%A') == 'Saturday'
     oppo_fixtures = oppo_fixtures[oppo_fixtures['saturday_game']]
     oppo_fixtures = oppo_fixtures.loc[oppo_fixtures['game_type'] == 'Standard']
