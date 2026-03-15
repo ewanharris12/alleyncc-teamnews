@@ -8,8 +8,7 @@ from the PlayCricket API via the ``playcric`` library and the helpers in
 import streamlit as st
 from playcric import alleyn
 from dashboard_utils import (
-    get_last_saturday,
-    get_next_saturday,
+    get_default_date,
     get_relevant_fixtures,
     get_club_teams_that_weekend,
     get_opposition_club_id,
@@ -96,11 +95,10 @@ playcricket_object = alleyn.acc(api_key=st.secrets["api_key"], site_id=st.secret
 st.info("**Step 1:** Choose which Saturday's fixtures you want to view, then confirm your selection.")
 _date_col, _date_btn_col = st.columns([3, 1], vertical_alignment="bottom")
 with _date_col:
-    st.session_state.selected_date = st.radio(
+    _picked_date = st.date_input(
         "Select fixture date",
-        options=[f"Last Saturday: {get_last_saturday()}", f"Next Saturday: {get_next_saturday()}"],
+        value=get_default_date(),
         key="fixture_date_option",
-        index=None,
     )
 
 
@@ -113,13 +111,8 @@ with _date_btn_col:
     _date_confirmed = st.button("Confirm Date", on_click=on_confirm_date_click)
 
 if _date_confirmed or st.session_state.button_clicked:
-    if st.session_state.selected_date:
-        # Resolve the human-readable radio label back to a plain date string
-        st.session_state.selected_date = (
-            get_last_saturday()
-            if st.session_state.selected_date.startswith("Last")
-            else get_next_saturday()
-        )
+    if _picked_date:
+        st.session_state.selected_date = _picked_date.strftime('%Y-%m-%d')
 
         st.session_state.fixtures = get_relevant_fixtures(
             playcricket_object, st.session_state.selected_date

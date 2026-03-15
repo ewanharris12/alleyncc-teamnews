@@ -15,6 +15,24 @@ PRIMARY_BLUE = "#1d1b5e"
 PRIMARY_RED = "#c92a1d"
 
 
+def get_default_date() -> datetime:
+    """Return the default date for the fixture date picker.
+
+    Until May 2026 the default is hardcoded to 6 September 2025 (the last
+    fixture date of the 2025 season used during development).  From May 2026
+    onwards it dynamically resolves to the coming Saturday, or today if today
+    is already a Saturday.
+
+    Returns:
+        ``datetime`` to use as the ``value`` argument of ``st.date_input``.
+    """
+    today = datetime.now()
+    if today < datetime(2026, 5, 1):
+        return datetime(2025, 9, 6)
+    days_until_saturday = (5 - today.weekday()) % 7
+    return today + timedelta(days=days_until_saturday)
+
+
 def get_last_saturday() -> str:
     """Return the date of the most recent Saturday (or today if today is Saturday).
 
