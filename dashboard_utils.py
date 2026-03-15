@@ -10,6 +10,11 @@ from typing import Any, Dict
 import pandas as pd
 import streamlit as st
 
+# --- Brand Colours ---
+PRIMARY_BLUE = "#1d1b5e"
+PRIMARY_RED = "#c92a1d"
+
+
 def get_last_saturday() -> str:
     """Return the date of the most recent Saturday (or today if today is Saturday).
 
@@ -68,8 +73,19 @@ def get_club_teams_that_weekend(fixtures: pd.DataFrame) -> Dict[str, float]:
     Returns:
         Dict mapping team name (str) to team ID (float) for Alleyn teams.
     """
-    st.table(data=fixtures[['match_date', 'home_club_name', 'home_team_name',
-                             'away_club_name', 'away_team_name']])
+    st.dataframe(
+        fixtures[['match_date', 'home_club_name', 'home_team_name',
+                  'away_club_name', 'away_team_name']],
+        column_config={
+            'match_date': st.column_config.DatetimeColumn('Date', format='DD/MM/YYYY'),
+            'home_club_name': st.column_config.TextColumn('Home Club'),
+            'home_team_name': st.column_config.TextColumn('Home Team'),
+            'away_club_name': st.column_config.TextColumn('Away Club'),
+            'away_team_name': st.column_config.TextColumn('Away Team'),
+        },
+        hide_index=True,
+        use_container_width=True,
+    )
     teams_lookup = {}
     alleyn_club_id = float(st.secrets["site_id"])
     for _, row in fixtures.iterrows():
@@ -126,19 +142,21 @@ def get_opposition_players(alleyn_object, match_id: int) -> tuple[pd.DataFrame, 
     return opposition_players, opposition_player_ids
 
 
-def get_opposition_saturday_fixtures(alleyn_object, oppo_club_id: int) -> pd.DataFrame:
+def get_opposition_saturday_fixtures(alleyn_object, oppo_club_id: int, selected_date: str) -> pd.DataFrame:
     """Fetch all Saturday league fixtures for the opposition club this season.
 
     Args:
         alleyn_object: Authenticated PlayCricket API client.
         oppo_club_id: PlayCricket site/club ID for the opposition.
+        selected_date: Date string (YYYY-MM-DD) used to determine the season year.
 
     Returns:
         DataFrame of Saturday Standard League fixtures, or empty with UI error
         if none are found.
     """
+    season = datetime.strptime(selected_date, "%Y-%m-%d").year
     oppo_fixtures = alleyn_object.get_all_matches(
-        season=datetime.now().year,
+        season=season,
         site_id=oppo_club_id
     )
     oppo_fixtures['saturday_game'] = oppo_fixtures['match_date'].dt.strftime('%A') == 'Saturday'
@@ -147,6 +165,7 @@ def get_opposition_saturday_fixtures(alleyn_object, oppo_club_id: int) -> pd.Dat
     oppo_fixtures = oppo_fixtures.loc[oppo_fixtures['competition_type'] == 'League']
     if oppo_fixtures.empty:
         st.error("No Saturday fixtures found for the opposition club.")
+
     return oppo_fixtures
 
 
@@ -317,14 +336,11 @@ def render_player_card(player_row: pd.Series,
         agg_bat: Aggregated batting stats for all opposition players.
         agg_bowl: Aggregated bowling stats for all opposition players.
     """
-    with st.container():
+    with st.container(border=True):
         position = int(round(player_row['position_y'], 0))
         st.markdown(
-            f"""
-            <div style="background-color:#f9f9f9; padding:15px; border-radius:12px;
-                        margin-bottom:15px; box-shadow:0 2px 5px rgba(0,0,0,0.1); color:#000;">
-                <h4 style="margin:0; color:#222;">{position}. {player_row['batsman_name']}</h4>
-            """,
+            f"<h4 style='margin:0 0 0.75rem 0;'>"
+            f"{position}. {player_row['batsman_name']}</h4>",
             unsafe_allow_html=True
         )
 
@@ -332,45 +348,37 @@ def render_player_card(player_row: pd.Series,
         player_bat_stats = agg_bat[agg_bat['batsman_id'] == player_id]
         player_bowl_stats = agg_bowl[agg_bowl['bowler_id'] == player_id]
 
-        if not player_bat_stats.empty:
-            for _, row in player_bat_stats.sort_values('team_name').iterrows():
-                st.markdown(
-                    f"""
-                    <p style="margin:5px 0; color:#999;">
-                        <b>Batting for {row['team_name']} - Runs:</b> {row['runs']} |
-                        <b>Avg:</b> {row['average']:.2f} |
-                        <b>100s/50s:</b> {row['100s']}/{row['50s']} |
-                        <b>Top Score:</b> {row['top_score']} |
-                        <b>4s/6s:</b> {row['fours']}/{row['sixes']} |
-                        <b>Balls Faced:</b> {row['balls']} |
-                        <b>Innings:</b> {row['match_id']}
-                    </p>
-                    """,
-                    unsafe_allow_html=True
-                )
+        bat_col, bowl_col = st.columns(2)
 
-        st.markdown("-----", unsafe_allow_html=True)
+        with bat_col:
+            if not player_bat_stats.empty:
+                for _, row in player_bat_stats.sort_values('team_name').iterrows():
+                    st.markdown(f"**Batting — {row['team_name']}**")
+                    m1, m2, m3, m4 = st.columns(4)
+                    m1.metric("Runs", int(row['runs']))
+                    m2.metric("Avg", f"{row['average']:.2f}")
+                    m3.metric("100s", int(row['100s']))
+                    m4.metric("50s", int(row['50s']))
+                    st.caption(
+                        f"Top Score: {row['top_score']} | "
+                        f"4s: {int(row['fours'])} | 6s: {int(row['sixes'])} | "
+                        f"Balls: {int(row['balls'])} | Innings: {int(row['match_id'])}"
+                    )
 
-        if not player_bowl_stats.empty:
-            for _, row in player_bowl_stats.sort_values('team_name').iterrows():
-                st.markdown(
-                    f"""
-                    <p style="margin:5px 0; color:#999;">
-                        <b>Bowling for {row['team_name']} - Wickets:</b> {row['wickets']} |
-                        <b>Avg:</b> {row['average']:.2f} |
-                        <b>5WI:</b> {row['5fers']} |
-                        <b>Overs:</b> {row['overs']} |
-                        <b>Innings:</b> {row['match_id']}
-                    </p>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-        st.markdown("</div>", unsafe_allow_html=True)
+        with bowl_col:
+            if not player_bowl_stats.empty:
+                for _, row in player_bowl_stats.sort_values('team_name').iterrows():
+                    st.markdown(f"**Bowling — {row['team_name']}**")
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Wickets", int(row['wickets']))
+                    m2.metric("Avg", f"{row['average']:.2f}")
+                    m3.metric("5WI", int(row['5fers']))
+                    st.caption(f"Overs: {row['overs']} | Innings: {int(row['match_id'])}")
 
 
 def generate_player_stats(alleyn_object,
-                          match_id: int) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+                          match_id: int,
+                          selected_date: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Orchestrate the full pipeline to produce per-player stats for a fixture.
 
     Steps:
@@ -385,18 +393,34 @@ def generate_player_stats(alleyn_object,
     Args:
         alleyn_object: Authenticated PlayCricket API client.
         match_id: Numeric ID of the upcoming fixture.
+        selected_date: Date string (DD/MM/YYYY) used to determine the season year.
 
     Returns:
         Tuple of (agg_bat, agg_bowl, opposition_players) DataFrames ready for display.
     """
-    opposition_players, opposition_player_ids = get_opposition_players(alleyn_object, match_id)
-    oppo_fixtures = get_opposition_saturday_fixtures(alleyn_object, st.session_state.oppo_club_id)
-    team_sheets = get_opposition_team_sheets(alleyn_object, oppo_fixtures)
-    relevant_matches = get_relevant_opposition_fixtures(team_sheets, opposition_player_ids)
-    agg_bat, agg_bowl, _ = get_stats(alleyn_object, relevant_matches)
-    agg_bat, agg_bowl = format_aggregated_data(agg_bat, agg_bowl, opposition_player_ids)
-    team_name_lookup = generate_team_name_lookup(oppo_fixtures)
-    agg_bat, agg_bowl = merge_team_names(agg_bat, agg_bowl, team_name_lookup)
-    opposition_players = calculate_batting_positions(agg_bat, opposition_players)
-    agg_bat, opposition_players = fill_columns(agg_bat, opposition_players)
+    with st.status("🏏 Loading opposition stats", expanded=True) as status:
+        st.write("🔍 Fetching opposition players")
+        opposition_players, opposition_player_ids = get_opposition_players(alleyn_object, match_id)
+
+        st.write("📅 Fetching opposition fixtures for the season")
+        oppo_fixtures = get_opposition_saturday_fixtures(alleyn_object, st.session_state.oppo_club_id, selected_date)
+
+        st.write("📋 Fetching opposition team sheets")
+        team_sheets = get_opposition_team_sheets(alleyn_object, oppo_fixtures)
+
+        st.write("🔎 Filtering relevant matches")
+        relevant_matches = get_relevant_opposition_fixtures(team_sheets, opposition_player_ids)
+
+        st.write("📊 Aggregating batting and bowling stats")
+        agg_bat, agg_bowl, _ = get_stats(alleyn_object, relevant_matches)
+        agg_bat, agg_bowl = format_aggregated_data(agg_bat, agg_bowl, opposition_player_ids)
+
+        st.write("✅ Finalising player data")
+        team_name_lookup = generate_team_name_lookup(oppo_fixtures)
+        agg_bat, agg_bowl = merge_team_names(agg_bat, agg_bowl, team_name_lookup)
+        opposition_players = calculate_batting_positions(agg_bat, opposition_players)
+        agg_bat, opposition_players = fill_columns(agg_bat, opposition_players)
+
+        status.update(label="🏏 Opposition stats loaded", state="complete", expanded=False)
+
     return agg_bat, agg_bowl, opposition_players
