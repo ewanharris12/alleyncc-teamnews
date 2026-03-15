@@ -350,7 +350,8 @@ def fill_columns(agg_bat: pd.DataFrame,
 
 def render_player_card(player_row: pd.Series,
                        agg_bat: pd.DataFrame,
-                       agg_bowl: pd.DataFrame) -> None:
+                       agg_bowl: pd.DataFrame,
+                       player_seasons: dict) -> None:
     """Render a styled HTML card for a single opposition player in the Streamlit UI.
 
     Shows the player's name and batting position as a header, then lists their
@@ -360,12 +361,19 @@ def render_player_card(player_row: pd.Series,
         player_row: A single row from the opposition_players DataFrame.
         agg_bat: Aggregated batting stats for all opposition players.
         agg_bowl: Aggregated bowling stats for all opposition players.
+        player_seasons: Dict mapping player_id (int) to a sorted tuple of season
+            years for which that player has recorded stats.
     """
     with st.container(border=True):
         position = int(round(player_row['position_y'], 0))
+        seasons = player_seasons.get(int(player_row['batsman_id']), ())
+        seasons_label = " & ".join(str(s) for s in seasons)
+        season_suffix = "season" if len(seasons) == 1 else "seasons"
         st.markdown(
             f"<h4 style='margin:0 0 0.75rem 0;'>"
-            f"{position}. {player_row['batsman_name']}</h4>",
+            f"{position}. {player_row['batsman_name']}"
+            f"<span style='font-size:0.8rem; font-weight:normal; color:#888; margin-left:0.6rem;'>"
+            f"{seasons_label} {season_suffix}</span></h4>",
             unsafe_allow_html=True
         )
 
@@ -403,7 +411,7 @@ def render_player_card(player_row: pd.Series,
 
 def generate_player_stats(alleyn_object,
                           match_id: int,
-                          selected_date: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+                          selected_date: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     """Orchestrate the full pipeline to produce per-player stats for a fixture.
 
     Steps:
@@ -421,7 +429,9 @@ def generate_player_stats(alleyn_object,
         selected_date: Date string (DD/MM/YYYY) used to determine the season year.
 
     Returns:
-        Tuple of (agg_bat, agg_bowl, opposition_players) DataFrames ready for display.
+        Tuple of (agg_bat, agg_bowl, opposition_players, seasons) where seasons is a
+        dict mapping each player_id (int) to a sorted tuple of season years for
+        which that player has recorded stats.
     """
     with st.status("🏏 Loading opposition stats", expanded=True) as status:
         st.write("🔍 Fetching opposition players")
@@ -446,6 +456,15 @@ def generate_player_stats(alleyn_object,
         opposition_players = calculate_batting_positions(agg_bat, opposition_players)
         agg_bat, opposition_players = fill_columns(agg_bat, opposition_players)
 
+        # Build per-player season lookup from the matches they actually appeared in
+        match_year = oppo_fixtures.set_index('id')['match_date'].dt.year
+        player_seasons: dict = (
+            relevant_matches.assign(season=relevant_matches['match_id'].map(match_year))
+            .groupby('player_id')['season']
+            .apply(lambda s: tuple(sorted(s.dropna().astype(int).unique())))
+            .to_dict()
+        )
+
         status.update(label="🏏 Opposition stats loaded", state="complete", expanded=False)
 
-    return agg_bat, agg_bowl, opposition_players
+    return agg_bat, agg_bowl, opposition_players, player_seasons

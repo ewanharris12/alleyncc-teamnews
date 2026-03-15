@@ -5,6 +5,9 @@ from the PlayCricket API via the ``playcric`` library and the helpers in
 ``dashboard_utils``.
 """
 
+import base64
+from pathlib import Path
+
 import streamlit as st
 from playcric import alleyn
 from dashboard_utils import (
@@ -74,6 +77,10 @@ st.markdown(
 )
 
 # --- Hero Banner ---
+_logo_path = Path(__file__).parent / "logo.png"
+_logo_data = base64.b64encode(_logo_path.read_bytes()).decode()
+_logo_src = f"data:image/png;base64,{_logo_data}"
+
 st.markdown(
     f"""
     <div style="background-color:{PRIMARY_BLUE}; padding:1.5rem 2rem; border-radius:12px;
@@ -83,7 +90,7 @@ st.markdown(
             <p style="color:{PRIMARY_RED}; margin:0.25rem 0 0 0; font-size:1.1rem;
                       font-weight:bold; letter-spacing:0.05em;">Opposition Team News</p>
         </div>
-        <img src="logo.png" alt="Alleyn CC logo"
+        <img src="{_logo_src}" alt="Alleyn CC logo"
              style="height:80px; width:80px; object-fit:contain; border-radius:8px;" />
     </div>
     """,
@@ -193,7 +200,7 @@ if _date_confirmed or st.session_state.button_clicked:
                     f"Opposition team ID: {st.session_state.oppo_team_id}"
                 )
 
-                agg_bat, agg_bowl, opposition_players = generate_player_stats(
+                agg_bat, agg_bowl, opposition_players, seasons = generate_player_stats(
                     playcricket_object, int(selected_fixture['id']), st.session_state.selected_date
                 )
 
@@ -201,4 +208,4 @@ if _date_confirmed or st.session_state.button_clicked:
                 st.markdown(f"### Opposition Player Stats")
                 # Render a stats card for each opposition player, ordered by batting position
                 for _, player_row in opposition_players.sort_values('position_y').iterrows():
-                    render_player_card(player_row, agg_bat, agg_bowl)
+                    render_player_card(player_row, agg_bat, agg_bowl, seasons)
