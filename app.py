@@ -82,7 +82,7 @@ st.markdown(
         <div>
             <h1 style="color:white; margin:0; font-size:2rem;">Alleyn Cricket Club</h1>
             <p style="color:{PRIMARY_RED}; margin:0.25rem 0 0 0; font-size:1.1rem;
-                      font-weight:bold; letter-spacing:0.05em;">Opposition Intelligence</p>
+                      font-weight:bold; letter-spacing:0.05em;">Opposition Team News</p>
         </div>
     </div>
     """,
