@@ -143,7 +143,7 @@ def get_opposition_players(alleyn_object, match_id: int) -> tuple[pd.DataFrame, 
 
 
 def get_opposition_saturday_fixtures(alleyn_object, oppo_club_id: int, selected_date: str) -> pd.DataFrame:
-    """Fetch all Saturday league fixtures for the opposition club this season.
+    """Fetch all Saturday league fixtures for the opposition club this and the prior season.
 
     Args:
         alleyn_object: Authenticated PlayCricket API client.
@@ -151,14 +151,21 @@ def get_opposition_saturday_fixtures(alleyn_object, oppo_club_id: int, selected_
         selected_date: Date string (YYYY-MM-DD) used to determine the season year.
 
     Returns:
-        DataFrame of Saturday Standard League fixtures, or empty with UI error
-        if none are found.
+        DataFrame of Saturday Standard League fixtures across both seasons, or empty
+        with UI error if none are found.
     """
     season = datetime.strptime(selected_date, "%Y-%m-%d").year
-    oppo_fixtures = alleyn_object.get_all_matches(
-        season=season,
-        site_id=oppo_club_id
-    )
+    all_fixtures = []
+    for s in (season, season - 1):
+        fixtures = alleyn_object.get_all_matches(season=s, site_id=oppo_club_id)
+        if not fixtures.empty:
+            all_fixtures.append(fixtures)
+
+    if not all_fixtures:
+        st.error("No Saturday fixtures found for the opposition club.")
+        return pd.DataFrame()
+
+    oppo_fixtures = pd.concat(all_fixtures, ignore_index=True)
     oppo_fixtures['saturday_game'] = oppo_fixtures['match_date'].dt.strftime('%A') == 'Saturday'
     oppo_fixtures = oppo_fixtures[oppo_fixtures['saturday_game']]
     oppo_fixtures = oppo_fixtures.loc[oppo_fixtures['game_type'] == 'Standard']
@@ -402,7 +409,7 @@ def generate_player_stats(alleyn_object,
         st.write("🔍 Fetching opposition players")
         opposition_players, opposition_player_ids = get_opposition_players(alleyn_object, match_id)
 
-        st.write("📅 Fetching opposition fixtures for the season")
+        st.write("📅 Fetching opposition fixtures for this season and last season")
         oppo_fixtures = get_opposition_saturday_fixtures(alleyn_object, st.session_state.oppo_club_id, selected_date)
 
         st.write("📋 Fetching opposition team sheets")
