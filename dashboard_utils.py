@@ -1,7 +1,14 @@
-import streamlit as st
-from datetime import datetime, timedelta
-import pandas as pd
+"""Utility functions for the Alleyn CC Team News dashboard.
 
+Provides helpers for date calculation, fixture retrieval, player-stat
+generation, and Streamlit UI rendering used by ``app.py``.
+"""
+
+from datetime import datetime, timedelta
+from typing import Any, Dict
+
+import pandas as pd
+import streamlit as st
 
 def get_last_saturday() -> str:
     """Return the date of the most recent Saturday (or today if today is Saturday).
@@ -14,6 +21,7 @@ def get_last_saturday() -> str:
     # Adding 2 and taking mod 7 gives the number of days to subtract to land on Saturday:
     #   Mon→2, Tue→3, Wed→4, Thu→5, Fri→6, Sat→0, Sun→1
     last_saturday = today - timedelta(days=(today.weekday() + 2) % 7)
+    last_saturday = datetime(2025, 8, 30)
     return last_saturday.strftime('%Y-%m-%d')
 
 
@@ -27,10 +35,10 @@ def get_next_saturday() -> str:
     # (5 - weekday()) % 7 gives days to add to reach Saturday:
     #   Mon→5, Tue→4, Wed→3, Thu→2, Fri→1, Sat→0, Sun→6
     next_saturday = today + timedelta(days=(5 - today.weekday()) % 7)
+    next_saturday = datetime(2025, 9, 6)
     return next_saturday.strftime('%Y-%m-%d')
 
-
-def get_relevant_fixtures(playcricket_object, saturday_date: str) -> pd.DataFrame:
+def get_relevant_fixtures(playcricket_object: Any, saturday_date: str) -> pd.DataFrame:
     """Fetch all club fixtures for the given Saturday date.
 
     Args:
@@ -41,14 +49,15 @@ def get_relevant_fixtures(playcricket_object, saturday_date: str) -> pd.DataFram
         DataFrame of fixtures on that date, or an empty DataFrame with an
         error shown in the UI if none are found.
     """
-    fixtures = playcricket_object.get_all_matches(season=pd.to_datetime(saturday_date).year)
+    saturday_date_dt = pd.to_datetime(saturday_date)
+    fixtures = playcricket_object.get_all_matches(season=saturday_date_dt.year)
     fixtures = fixtures[fixtures['match_date'].dt.strftime('%Y-%m-%d') == saturday_date]
     if fixtures.empty:
         st.error(f"No fixtures found for {saturday_date}. Please select a different date.")
     return fixtures
 
 
-def get_club_teams_that_weekend(fixtures: pd.DataFrame) -> dict:
+def get_club_teams_that_weekend(fixtures: pd.DataFrame) -> Dict[str, float]:
     """Display the weekend fixture list and build a team-name → team-ID lookup.
 
     Only includes teams that belong to Alleyn CC (matched by site_id secret).

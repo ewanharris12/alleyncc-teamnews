@@ -1,5 +1,12 @@
+"""Streamlit application entry point for the Alleyn CC Team News dashboard.
+
+Renders fixture and player statistics for Alleyn Cricket Club, pulling data
+from the PlayCricket API via the ``playcric`` library and the helpers in
+``dashboard_utils``.
+"""
+
 import streamlit as st
-import pandas as pd
+from playcric import alleyn
 from dashboard_utils import (
     get_last_saturday,
     get_next_saturday,
@@ -9,7 +16,6 @@ from dashboard_utils import (
     generate_player_stats,
     render_player_card,
 )
-from playcricket import alleyn
 
 # --- Brand Colours ---
 PRIMARY_BLUE = "#1d1b5e"
@@ -124,7 +130,8 @@ if (
                 st.write(
                     f"{selected_fixture['match_date'].date()}: "
                     f"{selected_fixture['home_club_name']} ({selected_fixture['home_team_name']}) "
-                    f"vs {selected_fixture['away_club_name']} ({selected_fixture['away_team_name']})"
+                    f"vs {selected_fixture['away_club_name']}"
+                    f" ({selected_fixture['away_team_name']})"
                 )
 
                 st.session_state.oppo_club_id, st.session_state.oppo_team_id = (
