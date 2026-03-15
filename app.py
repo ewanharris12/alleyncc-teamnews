@@ -97,7 +97,7 @@ if (
                             f"""
                             <div style="background-color:#f9f9f9; padding:15px; border-radius:12px; 
                                         margin-bottom:15px; box-shadow:0 2px 5px rgba(0,0,0,0.1); color:#000;">
-                                <h4 style="margin:0; color:#222;">{round(row['position_y'],0)}. {row['batsman_name']}</h4>
+                                <h4 style="margin:0; color:#222;">{int(round(row['position_y'],0))}. {row['batsman_name']}</h4>
                             """,
                             unsafe_allow_html=True
                         )
