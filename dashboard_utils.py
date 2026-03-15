@@ -36,7 +36,7 @@ def get_next_saturday():
 
 def get_relevant_fixtures(playcricket_object, saturday_date, n):
     # st.write(n)
-    fixtures = playcricket_object.get_all_matches(season=datetime.now().year)
+    fixtures = playcricket_object.get_all_matches(season=pd.to_datetime(saturday_date).year)
     fixtures = fixtures[fixtures['match_date'].dt.strftime('%Y-%m-%d') == saturday_date]
     if fixtures.empty:
         st.error(f"No fixtures found for {saturday_date}. Please select a different date.")
