@@ -151,6 +151,8 @@ def get_opposition_players(alleyn_object, match_id: int) -> tuple[pd.DataFrame, 
         Tuple of (opposition_players DataFrame, list of unique opposition player IDs).
     """
     players = alleyn_object.get_all_players_involved([match_id])
+    if players.empty or 'player_id' not in players.columns:
+        return pd.DataFrame(), []
     # Normalise team_id to int so it can be compared against alleyn_object.team_ids
     players['team_id'] = players['team_id'].replace('', '0').fillna('0').astype(int)
     opposition_players = players.loc[~players['team_id'].isin(alleyn_object.team_ids)]
