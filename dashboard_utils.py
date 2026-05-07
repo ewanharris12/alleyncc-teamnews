@@ -154,8 +154,6 @@ def get_opposition_players(alleyn_object, match_id: int) -> tuple[pd.DataFrame, 
     # Normalise team_id to int so it can be compared against alleyn_object.team_ids
     players['team_id'] = players['team_id'].replace('', '0').fillna('0').astype(int)
     opposition_players = players.loc[~players['team_id'].isin(alleyn_object.team_ids)]
-    if opposition_players.empty:
-        st.error("No opposition players found for the selected match.")
     opposition_player_ids = opposition_players['player_id'].unique()
     return opposition_players, opposition_player_ids
 
@@ -411,11 +409,12 @@ def render_player_card(player_row: pd.Series,
 
 def generate_player_stats(alleyn_object,
                           match_id: int,
-                          selected_date: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+                          selected_date: str,
+                          player_id_override: list | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
     """Orchestrate the full pipeline to produce per-player stats for a fixture.
 
     Steps:
-        1. Identify opposition players from the fixture.
+        1. Identify opposition players from the fixture (or use player_id_override).
         2. Fetch the opposition club's Saturday fixtures for the season.
         3. Retrieve team sheets for those fixtures.
         4. Filter to matches where opposition players appeared.
@@ -427,6 +426,8 @@ def generate_player_stats(alleyn_object,
         alleyn_object: Authenticated PlayCricket API client.
         match_id: Numeric ID of the upcoming fixture.
         selected_date: Date string (DD/MM/YYYY) used to determine the season year.
+        player_id_override: Optional list of player IDs to use instead of fetching
+            from the match. Used when the match has no recorded players yet.
 
     Returns:
         Tuple of (agg_bat, agg_bowl, opposition_players, seasons) where seasons is a
@@ -434,8 +435,17 @@ def generate_player_stats(alleyn_object,
         which that player has recorded stats.
     """
     with st.status("🏏 Loading opposition stats", expanded=True) as status:
-        st.write("🔍 Fetching opposition players")
-        opposition_players, opposition_player_ids = get_opposition_players(alleyn_object, match_id)
+        if player_id_override is not None:
+            st.write("🔍 Using manually specified player IDs")
+            opposition_players = pd.DataFrame({'player_id': player_id_override})
+            opposition_player_ids = player_id_override
+        else:
+            st.write("🔍 Fetching opposition players")
+            opposition_players, opposition_player_ids = get_opposition_players(alleyn_object, match_id)
+
+        if len(opposition_player_ids) == 0:
+            status.update(label="⚠️ No opposition players found", state="error", expanded=False)
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
 
         st.write("📅 Fetching opposition fixtures for this season and last season")
         oppo_fixtures = get_opposition_saturday_fixtures(alleyn_object, st.session_state.oppo_club_id, selected_date)

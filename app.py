@@ -39,6 +39,8 @@ def init_session_state() -> None:
         'selected_team_id': None,
         'button_submit_team': None,
         'button_clicked': False,
+        'team_confirmed': False,
+        'manual_player_ids': None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -114,6 +116,14 @@ with _date_col:
 def on_confirm_date_click() -> None:
     """Mark the date-confirm button as clicked so the choice persists on rerun."""
     st.session_state.button_clicked = True
+    st.session_state.team_confirmed = False
+    st.session_state.manual_player_ids = None
+
+
+def on_confirm_team_click() -> None:
+    """Mark the team-confirm button as clicked and reset any manual player ID override."""
+    st.session_state.team_confirmed = True
+    st.session_state.manual_player_ids = None
 
 
 with _date_btn_col:
@@ -137,12 +147,12 @@ if _date_confirmed or st.session_state.button_clicked:
                 options=sorted(list(st.session_state.teams_lookup.keys()))
             )
         with _team_btn_col:
-            _team_confirmed = st.button("Confirm Your Team")
+            _team_confirmed = st.button("Confirm Your Team", on_click=on_confirm_team_click)
         st.session_state.selected_team_id = st.session_state.teams_lookup[
             st.session_state.selected_team
         ]
 
-        if _team_confirmed:
+        if _team_confirmed or st.session_state.team_confirmed:
             # Find the single fixture row for the selected team (home or away)
             selected_fixture = st.session_state.fixtures[
                 (st.session_state.fixtures['home_team_id'] == st.session_state.selected_team_id)
@@ -201,11 +211,37 @@ if _date_confirmed or st.session_state.button_clicked:
                 )
 
                 agg_bat, agg_bowl, opposition_players, seasons = generate_player_stats(
-                    playcricket_object, int(selected_fixture['id']), st.session_state.selected_date
+                    playcricket_object, int(selected_fixture['id']), st.session_state.selected_date,
+                    player_id_override=st.session_state.manual_player_ids
                 )
 
+                # Drop players with no batting history (no batsman_id after pipeline merge)
+                if 'batsman_id' in opposition_players.columns:
+                    opposition_players = opposition_players.dropna(subset=['batsman_id'])
+
                 st.divider()
-                st.markdown(f"### Opposition Player Stats")
-                # Render a stats card for each opposition player, ordered by batting position
-                for _, player_row in opposition_players.sort_values('position_y').iterrows():
-                    render_player_card(player_row, agg_bat, agg_bowl, seasons)
+                st.markdown("### Opposition Player Stats")
+
+                if opposition_players.empty:
+                    st.warning(
+                        "No opposition players found for the selected match. "
+                        "You can manually enter player IDs to generate stats."
+                    )
+                    with st.form("manual_player_ids_form"):
+                        player_ids_input = st.text_input(
+                            "Player IDs (comma-separated)",
+                            placeholder="e.g. 123456, 789012, 345678",
+                        )
+                        if st.form_submit_button("Generate Stats"):
+                            ids = [
+                                int(pid.strip())
+                                for pid in player_ids_input.split(',')
+                                if pid.strip().isdigit()
+                            ]
+                            if ids:
+                                st.session_state.manual_player_ids = ids
+                                st.rerun()
+                else:
+                    # Render a stats card for each opposition player, ordered by batting position
+                    for _, player_row in opposition_players.sort_values('position_y').iterrows():
+                        render_player_card(player_row, agg_bat, agg_bowl, seasons)
