@@ -48,7 +48,7 @@ def init_session_state() -> None:
 
 
 # --- Page Config ---
-st.set_page_config(page_title="AlleynCC Dashboard", layout="wide")
+st.set_page_config(page_title="Alleyn CC Dashboard", layout="wide")
 
 # --- Custom CSS ---
 st.markdown(
