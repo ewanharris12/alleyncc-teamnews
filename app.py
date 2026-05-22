@@ -17,6 +17,7 @@ from dashboard_utils import (
     get_opposition_club_id,
     generate_player_stats,
     render_player_card,
+    render_team_sheet,
 )
 
 # --- Brand Colours ---
@@ -203,6 +204,13 @@ if _date_confirmed or st.session_state.button_clicked:
                 st.session_state.oppo_club_id, st.session_state.oppo_team_id = (
                     get_opposition_club_id(selected_fixture)
                 )
+                alleyn_is_home = (
+                    int(selected_fixture['home_club_id']) == int(st.secrets['site_id'])
+                )
+                oppo_team_name = (
+                    selected_fixture['away_team_name'] if alleyn_is_home
+                    else selected_fixture['home_team_name']
+                )
                 st.caption(
                     f"Debug — Alleyn site ID: {st.secrets['site_id']} | "
                     f"Match ID: {int(selected_fixture['id'])} | "
@@ -214,10 +222,6 @@ if _date_confirmed or st.session_state.button_clicked:
                     playcricket_object, int(selected_fixture['id']), st.session_state.selected_date,
                     player_id_override=st.session_state.manual_player_ids
                 )
-
-                # Drop players with no batting history (no batsman_id after pipeline merge)
-                if 'batsman_id' in opposition_players.columns:
-                    opposition_players = opposition_players.dropna(subset=['batsman_id'])
 
                 st.divider()
                 st.markdown("### Opposition Player Stats")
@@ -242,6 +246,8 @@ if _date_confirmed or st.session_state.button_clicked:
                                 st.session_state.manual_player_ids = ids
                                 st.rerun()
                 else:
+                    render_team_sheet(opposition_players, agg_bat, agg_bowl, oppo_team_name)
+                    st.divider()
                     # Render a stats card for each opposition player, ordered by batting position
                     for _, player_row in opposition_players.sort_values('position_y').iterrows():
                         render_player_card(player_row, agg_bat, agg_bowl, seasons)

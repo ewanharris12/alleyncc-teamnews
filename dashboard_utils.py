@@ -4,6 +4,7 @@ Provides helpers for date calculation, fixture retrieval, player-stat
 generation, and Streamlit UI rendering used by ``app.py``.
 """
 
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict
 
@@ -324,6 +325,8 @@ def calculate_batting_positions(agg_bat: pd.DataFrame,
     opposition_players = opposition_players.merge(
         bat_positions, how='left', left_on='player_id', right_on='batsman_id'
     )
+
+    opposition_players['position_y'] = opposition_players.sort_values('position_y')['position_y'].rank(method='first')
     return opposition_players
 
 
@@ -348,6 +351,127 @@ def fill_columns(agg_bat: pd.DataFrame,
     return agg_bat, opposition_players
 
 
+def _team_sort_key(name: str) -> int:
+    """Extract the leading XI number from a team name for ordering (e.g. '2nd XI' → 2)."""
+    m = re.search(r'\d+', name)
+    return int(m.group()) if m else 999
+
+
+def _stats_for_tier(bat_rows: pd.DataFrame, bowl_rows: pd.DataFrame) -> str:
+    """Return a compact stats string for a filtered set of team rows, or '—' if none."""
+    if bat_rows.empty and bowl_rows.empty:
+        return '—'
+
+    parts = []
+
+    if not bat_rows.empty:
+        total_runs = int(bat_rows['runs'].sum())
+        total_inn = int(bat_rows['match_id'].sum())
+        avg = total_runs / total_inn if total_inn > 0 else 0
+        numeric_hs = (
+            bat_rows['top_score']
+            .astype(str)
+            .str.replace('*', '', regex=False)
+            .apply(pd.to_numeric, errors='coerce')
+            .fillna(0)
+        )
+        hs = bat_rows['top_score'].iloc[int(numeric_hs.to_numpy().argmax())]
+        parts.append(f"{total_runs}r avg {avg:.0f} HS {hs}")
+
+    if not bowl_rows.empty:
+        total_wkts = int(bowl_rows['wickets'].sum())
+        if total_wkts > 0:
+            total_runs_c = (
+                bowl_rows['average'].astype(float) * bowl_rows['wickets'].astype(float)
+            ).sum()
+            bowl_avg = total_runs_c / total_wkts
+            parts.append(f"{total_wkts}w avg {bowl_avg:.0f}")
+        else:
+            parts.append("0w")
+
+    return " | ".join(parts)
+
+
+def render_team_sheet(opposition_players: pd.DataFrame,
+                      agg_bat: pd.DataFrame,
+                      agg_bowl: pd.DataFrame,
+                      oppo_team_name: str) -> None:
+    """Render a compact team-sheet table with per-tier stat columns.
+
+    Columns: batting position, player name, stats in higher XIs, stats in the
+    specific XI being played, stats in lower XIs.
+
+    Args:
+        opposition_players: DataFrame of opposition players.
+        agg_bat: Aggregated batting stats with a 'team_name' column.
+        agg_bowl: Aggregated bowling stats with a 'team_name' column.
+        oppo_team_name: Name of the specific opposition team being played.
+    """
+    all_teams = sorted(
+        pd.concat([
+            agg_bat['team_name'] if 'team_name' in agg_bat.columns else pd.Series(dtype=str),
+            agg_bowl['team_name'] if 'team_name' in agg_bowl.columns else pd.Series(dtype=str),
+        ]).dropna().unique(),
+        key=_team_sort_key,
+    )
+    try:
+        current_idx = all_teams.index(oppo_team_name)
+        above_teams = set(all_teams[:current_idx])
+        below_teams = set(all_teams[current_idx + 1:])
+    except ValueError:
+        # oppo_team_name not found in stats — treat everything as current
+        above_teams, below_teams = set(), set()
+
+    rows = []
+    for _, player_row in opposition_players.sort_values('position_y', na_position='last').iterrows():
+        batsman_id = player_row.get('batsman_id')
+        has_batting_record = pd.notna(batsman_id)
+
+        if has_batting_record:
+            player_id = batsman_id
+            name = player_row['batsman_name']
+        else:
+            player_id = player_row.get('player_id')
+            name = player_row.get('player_name', str(player_id) if player_id else 'Unknown Player')
+
+        position_y = player_row.get('position_y')
+        position = int(round(position_y, 0)) if pd.notna(position_y) else None
+
+        bat = agg_bat[agg_bat['batsman_id'] == player_id] if player_id is not None else pd.DataFrame()
+        bowl = agg_bowl[agg_bowl['bowler_id'] == player_id] if player_id is not None else pd.DataFrame()
+
+        def _tier(teams_set, is_current=False):
+            if is_current:
+                b = bat[bat['team_name'] == oppo_team_name] if 'team_name' in bat.columns else bat
+                bw = bowl[bowl['team_name'] == oppo_team_name] if 'team_name' in bowl.columns else bowl
+            else:
+                b = bat[bat['team_name'].isin(teams_set)] if 'team_name' in bat.columns else pd.DataFrame()
+                bw = bowl[bowl['team_name'].isin(teams_set)] if 'team_name' in bowl.columns else pd.DataFrame()
+            return _stats_for_tier(b, bw)
+
+        rows.append({
+            '#': str(position) if position is not None else '—',
+            'Player': name,
+            'Higher XIs': _tier(above_teams),
+            oppo_team_name: _tier(set(), is_current=True),
+            'Lower XIs': _tier(below_teams),
+        })
+
+    df = pd.DataFrame(rows)
+    st.dataframe(
+        df,
+        column_config={
+            '#': st.column_config.TextColumn('#', width='small'),
+            'Player': st.column_config.TextColumn('Player', width='medium'),
+            'Higher XIs': st.column_config.TextColumn('Higher XIs'),
+            oppo_team_name: st.column_config.TextColumn(oppo_team_name),
+            'Lower XIs': st.column_config.TextColumn('Lower XIs'),
+        },
+        hide_index=True,
+        use_container_width=True,
+    )
+
+
 def render_player_card(player_row: pd.Series,
                        agg_bat: pd.DataFrame,
                        agg_bowl: pd.DataFrame,
@@ -365,21 +489,38 @@ def render_player_card(player_row: pd.Series,
             years for which that player has recorded stats.
     """
     with st.container(border=True):
-        position = int(round(player_row['position_y'], 0))
-        seasons = player_seasons.get(int(player_row['batsman_id']), ())
+        # Resolve player name and ID — batsman_id/batsman_name are NaN when no batting
+        # history was found, so fall back to the original player_name/player_id columns.
+        batsman_id = player_row.get('batsman_id')
+        has_batting_record = pd.notna(batsman_id)
+
+        if has_batting_record:
+            player_id = batsman_id
+            player_name = player_row['batsman_name']
+        else:
+            player_id = player_row.get('player_id')
+            player_name = player_row.get('player_name', str(player_id) if player_id else 'Unknown Player')
+
+        position_y = player_row.get('position_y')
+        position = int(round(position_y, 0)) if pd.notna(position_y) else '?'
+
+        seasons = player_seasons.get(int(player_id), ()) if player_id is not None else ()
         seasons_label = " & ".join(str(s) for s in seasons)
         season_suffix = "season" if len(seasons) == 1 else "seasons"
         st.markdown(
             f"<h4 style='margin:0 0 0.75rem 0;'>"
-            f"{position}. {player_row['batsman_name']}"
+            f"{position}. {player_name}"
             f"<span style='font-size:0.8rem; font-weight:normal; color:#888; margin-left:0.6rem;'>"
             f"{seasons_label} {season_suffix}</span></h4>",
             unsafe_allow_html=True
         )
 
-        player_id = player_row['batsman_id']
-        player_bat_stats = agg_bat[agg_bat['batsman_id'] == player_id]
-        player_bowl_stats = agg_bowl[agg_bowl['bowler_id'] == player_id]
+        player_bat_stats = agg_bat[agg_bat['batsman_id'] == player_id] if player_id is not None else pd.DataFrame()
+        player_bowl_stats = agg_bowl[agg_bowl['bowler_id'] == player_id] if player_id is not None else pd.DataFrame()
+
+        if player_bat_stats.empty and player_bowl_stats.empty:
+            st.caption("No stats found")
+            return
 
         bat_col, bowl_col = st.columns(2)
 

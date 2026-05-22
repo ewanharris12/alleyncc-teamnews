@@ -119,6 +119,13 @@ def _fetch_match_result(api_key: str, site_id: str, match_id: int, team_id: int)
     return pc.get_result_for_my_team(match_id, team_ids=[team_id])
 
 
+@st.cache_data
+def _fetch_innings_scores(api_key: str, site_id: str, match_id: int) -> pd.DataFrame:
+    """Fetch innings total scores (including extras) for a match. Cached per match."""
+    pc = alleyn.acc(api_key=api_key, site_id=site_id)
+    return pc.get_innings_total_scores(match_id)
+
+
 def _get_team_fixtures(
     pc, oppo_club_id: int, oppo_team_id: int, selected_date: str
 ) -> pd.DataFrame:
@@ -137,9 +144,7 @@ def _get_team_fixtures(
 def _load_stats(pc, team_fixtures: pd.DataFrame, oppo_team_id: int):
     """Fetch and aggregate batting/bowling stats for the opposition team.
 
-    Returns (raw_bat, agg_bat, agg_bowl).  raw_bat contains all teams so that
-    home/away scores can be derived; agg_bat/agg_bowl are filtered to the
-    opposition team only.
+    Returns (agg_bat, agg_bowl) filtered to the opposition team only.
     """
     oppo_team_id = int(oppo_team_id)
     match_ids = team_fixtures["id"].astype(int).tolist()
@@ -159,12 +164,11 @@ def _load_stats(pc, team_fixtures: pd.DataFrame, oppo_team_id: int):
         group_by_team=False, batting=team_bat, bowling=team_bowl, fielding=team_bat
     )
 
-    return raw_bat, agg_bat, agg_bowl
+    return agg_bat, agg_bowl
 
 
 def _build_home_away_df(
     team_fixtures: pd.DataFrame,
-    raw_bat: pd.DataFrame,
     oppo_team_id: int,
     api_key: str,
     site_id: str,
@@ -175,25 +179,6 @@ def _build_home_away_df(
 
     oppo_team_id = int(oppo_team_id)
 
-    # Compute scores and wickets from batting data for display purposes
-    scores = pd.DataFrame()
-    if not raw_bat.empty:
-        raw = raw_bat.copy()
-        raw["team_id"] = raw["team_id"].replace("", "0").fillna("0").astype(int)
-        raw["match_id"] = raw["match_id"].replace("", "0").fillna(0).astype(int)
-
-        match_scores = raw.groupby(["match_id", "team_id"])["runs"].sum().reset_index()
-
-        how_out_clean = raw["how_out"].fillna("").str.strip().str.lower()
-        dismissed = raw[
-            (raw["not_out"] == 0) & (~how_out_clean.isin(["did not bat", ""]))
-        ]
-        match_wickets = (
-            dismissed.groupby(["match_id", "team_id"]).size().reset_index(name="wickets")
-        )
-        scores = match_scores.merge(match_wickets, on=["match_id", "team_id"], how="left")
-        scores["wickets"] = scores["wickets"].fillna(0).astype(int)
-
     records = []
     for _, fix in team_fixtures.iterrows():
         mid = int(fix["id"])
@@ -203,12 +188,17 @@ def _build_home_away_df(
         opponent = f"{opp_club} ({opp_team})"
 
         our_runs, our_wkts, opp_runs = None, None, None
-        if not scores.empty:
-            our = scores[(scores["match_id"] == mid) & (scores["team_id"] == oppo_team_id)]
-            opp = scores[(scores["match_id"] == mid) & (scores["team_id"] != oppo_team_id)]
-            our_runs = int(our["runs"].iloc[0]) if not our.empty else None
-            our_wkts = int(our["wickets"].iloc[0]) if not our.empty else None
-            opp_runs = int(opp["runs"].iloc[0]) if not opp.empty else None
+        inn_df = _fetch_innings_scores(api_key, site_id, mid)
+        if not inn_df.empty:
+            inn_df = inn_df.copy()
+            inn_df["team_batting_id"] = inn_df["team_batting_id"].astype(int)
+            our = inn_df[inn_df["team_batting_id"] == oppo_team_id]
+            opp = inn_df[inn_df["team_batting_id"] != oppo_team_id]
+            if not our.empty:
+                our_runs = int(our["runs"].iloc[0])
+                our_wkts = int(our["wickets"].iloc[0])
+            if not opp.empty:
+                opp_runs = int(opp["runs"].iloc[0])
 
         score_str = (
             f"{our_runs}/{our_wkts}"
@@ -500,13 +490,13 @@ if _picked_date and (st.session_state.osa_date_clicked):
                 st.stop()
 
             st.write(f"📊 Fetching stats across {len(team_fixtures)} fixtures")
-            raw_bat, agg_bat, agg_bowl = _load_stats(
+            agg_bat, agg_bowl = _load_stats(
                 playcricket_object, team_fixtures, oppo_team_id
             )
 
             st.write("🏠 Building home/away analysis")
             ha_df = _build_home_away_df(
-                team_fixtures, raw_bat, oppo_team_id,
+                team_fixtures, oppo_team_id,
                 st.secrets["api_key"], st.secrets["site_id"]
             )
 
@@ -535,7 +525,6 @@ if _picked_date and (st.session_state.osa_date_clicked):
         # --- Home / away ---
         st.markdown("### Home & Away Analysis")
         st.caption(
-            "Scores derived from individual batting totals (excludes extras). "
-            "Results inferred by comparing team run totals."
+            "Results fetched from match scorecards including extras."
         )
         _render_home_away(ha_df)
