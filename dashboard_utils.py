@@ -550,6 +550,148 @@ def render_player_card(player_row: pd.Series,
                     st.caption(f"Overs: {row['overs']} | Innings: {int(row['match_id'])}")
 
 
+def get_relevant_fixtures_for_club(playcricket_object: Any, saturday_date: str, site_id: int) -> pd.DataFrame:
+    """Fetch all fixtures for a given club and Saturday date.
+
+    Args:
+        playcricket_object: Authenticated PlayCricket API client.
+        saturday_date: Date string in 'YYYY-MM-DD' format.
+        site_id: PlayCricket site/club ID to fetch fixtures for.
+
+    Returns:
+        DataFrame of fixtures on that date, or an empty DataFrame with an
+        error shown in the UI if none are found.
+    """
+    saturday_date_dt = pd.to_datetime(saturday_date)
+    fixtures = playcricket_object.get_all_matches(season=saturday_date_dt.year, site_id=site_id)
+    fixtures = fixtures[fixtures['match_date'].dt.strftime('%Y-%m-%d') == saturday_date]
+    if fixtures.empty:
+        st.error(f"No fixtures found for {saturday_date}. Please select a different date.")
+    return fixtures
+
+
+def get_club_teams_for_date(fixtures: pd.DataFrame, club_id: int) -> Dict[str, float]:
+    """Display the fixture list and build a team-name → team-ID lookup for a given club.
+
+    Args:
+        fixtures: DataFrame of fixtures for the selected Saturday.
+        club_id: PlayCricket site/club ID whose teams should be included.
+
+    Returns:
+        Dict mapping team name (str) to team ID (float) for the given club.
+    """
+    st.dataframe(
+        fixtures[['match_date', 'home_club_name', 'home_team_name',
+                  'away_club_name', 'away_team_name']],
+        column_config={
+            'match_date': st.column_config.DatetimeColumn('Date', format='DD/MM/YYYY'),
+            'home_club_name': st.column_config.TextColumn('Home Club'),
+            'home_team_name': st.column_config.TextColumn('Home Team'),
+            'away_club_name': st.column_config.TextColumn('Away Club'),
+            'away_team_name': st.column_config.TextColumn('Away Team'),
+        },
+        hide_index=True,
+        use_container_width=True,
+    )
+    teams_lookup = {}
+    club_id_float = float(club_id)
+    for _, row in fixtures.iterrows():
+        if float(row['home_club_id']) == club_id_float:
+            teams_lookup[row['home_team_name']] = float(row['home_team_id'])
+        elif float(row['away_club_id']) == club_id_float:
+            teams_lookup[row['away_team_name']] = float(row['away_team_id'])
+    return teams_lookup
+
+
+def get_selected_team_players(alleyn_object, match_id: int, team_id: int) -> tuple[pd.DataFrame, list]:
+    """Fetch players involved in a match and filter to the selected team only.
+
+    Args:
+        alleyn_object: Authenticated PlayCricket API client.
+        match_id: Numeric ID of the fixture.
+        team_id: Team ID to filter players by.
+
+    Returns:
+        Tuple of (team_players DataFrame, list of unique player IDs).
+    """
+    players = alleyn_object.get_all_players_involved([match_id])
+    if players.empty or 'player_id' not in players.columns:
+        return pd.DataFrame(), []
+    players['team_id'] = players['team_id'].replace('', '0').fillna('0').astype(int)
+    team_players = players.loc[players['team_id'] == int(team_id)]
+    player_ids = team_players['player_id'].unique()
+    return team_players, player_ids
+
+
+def generate_selected_team_stats(alleyn_object,
+                                 match_id: int,
+                                 selected_date: str,
+                                 club_id: int,
+                                 team_id: int,
+                                 player_id_override: list | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+    """Orchestrate the full pipeline to produce per-player stats for the selected team.
+
+    Mirrors generate_player_stats but targets the selected team's own players
+    rather than the opposition.
+
+    Args:
+        alleyn_object: Authenticated PlayCricket API client.
+        match_id: Numeric ID of the fixture.
+        selected_date: Date string ('YYYY-MM-DD') used to determine the season year.
+        club_id: PlayCricket site/club ID for the selected club.
+        team_id: Team ID of the specific team within the club.
+        player_id_override: Optional list of player IDs to use instead of fetching
+            from the match. Used when the match has no recorded players yet.
+
+    Returns:
+        Tuple of (agg_bat, agg_bowl, team_players, seasons) where seasons is a
+        dict mapping each player_id (int) to a sorted tuple of season years.
+    """
+    with st.status("🏏 Loading team stats", expanded=True) as status:
+        if player_id_override is not None:
+            st.write("🔍 Using manually specified player IDs")
+            team_players = pd.DataFrame({'player_id': player_id_override})
+            player_ids = player_id_override
+        else:
+            st.write("🔍 Fetching team players")
+            team_players, player_ids = get_selected_team_players(alleyn_object, match_id, team_id)
+
+        if len(player_ids) == 0:
+            status.update(label="⚠️ No players found", state="error", expanded=False)
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}
+
+        st.write("📅 Fetching club fixtures for this season and last season")
+        club_fixtures = get_opposition_saturday_fixtures(alleyn_object, club_id, selected_date)
+
+        st.write("📋 Fetching team sheets")
+        team_sheets = get_opposition_team_sheets(alleyn_object, club_fixtures)
+
+        st.write("🔎 Filtering relevant matches")
+        relevant_matches = get_relevant_opposition_fixtures(team_sheets, player_ids)
+
+        st.write("📊 Aggregating batting and bowling stats")
+        agg_bat, agg_bowl, _ = get_stats(alleyn_object, relevant_matches)
+        agg_bat, agg_bowl = format_aggregated_data(agg_bat, agg_bowl, player_ids)
+
+        st.write("✅ Finalising player data")
+        team_name_lookup = generate_team_name_lookup(club_fixtures)
+        agg_bat, agg_bowl = merge_team_names(agg_bat, agg_bowl, team_name_lookup)
+        team_players = calculate_batting_positions(agg_bat, team_players)
+        agg_bat, team_players = fill_columns(agg_bat, team_players)
+
+        match_year = club_fixtures.set_index('id')['match_date'].dt.year
+        player_seasons: dict = (
+            relevant_matches.assign(season=relevant_matches['match_id'].map(match_year))
+            .groupby('player_id')['season']
+            .apply(lambda s: tuple(sorted(s.dropna().astype(int).unique())))
+            .to_dict()
+        )
+
+        status.update(label="🏏 Team stats loaded", state="complete", expanded=False)
+
+    return agg_bat, agg_bowl, team_players, player_seasons
+
+
 def generate_player_stats(alleyn_object,
                           match_id: int,
                           selected_date: str,
