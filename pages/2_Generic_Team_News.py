@@ -13,9 +13,9 @@ from playcric import alleyn
 
 from dashboard_utils import (
     get_default_date,
-    get_relevant_fixtures_for_club,
-    get_club_teams_for_date,
-    generate_selected_team_stats,
+    get_fixtures_for_date,
+    get_club_teams,
+    generate_player_stats,
     render_player_card,
     render_team_sheet,
 )
@@ -137,12 +137,12 @@ if _picked_date and st.session_state.ctn_date_clicked:
     st.session_state.ctn_selected_date = _picked_date.strftime("%Y-%m-%d")
     st.session_state.ctn_selected_club_id = CLUBS[_selected_club_name]
 
-    st.session_state.ctn_fixtures = get_relevant_fixtures_for_club(
+    st.session_state.ctn_fixtures = get_fixtures_for_date(
         playcricket_object,
         st.session_state.ctn_selected_date,
-        st.session_state.ctn_selected_club_id,
+        site_id=st.session_state.ctn_selected_club_id,
     )
-    st.session_state.ctn_teams_lookup = get_club_teams_for_date(
+    st.session_state.ctn_teams_lookup = get_club_teams(
         st.session_state.ctn_fixtures,
         st.session_state.ctn_selected_club_id,
     )
@@ -217,12 +217,12 @@ if _picked_date and st.session_state.ctn_date_clicked:
                 unsafe_allow_html=True,
             )
 
-            agg_bat, agg_bowl, team_players, seasons = generate_selected_team_stats(
+            agg_bat, agg_bowl, team_players, seasons = generate_player_stats(
                 playcricket_object,
                 int(selected_fixture["id"]),
                 st.session_state.ctn_selected_date,
-                st.session_state.ctn_selected_club_id,
-                int(st.session_state.ctn_selected_team_id),
+                club_id=st.session_state.ctn_selected_club_id,
+                team_id=int(st.session_state.ctn_selected_team_id),
                 player_id_override=st.session_state.ctn_manual_player_ids,
             )
 

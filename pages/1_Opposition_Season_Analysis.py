@@ -15,10 +15,10 @@ from playcric import config as pc_config
 
 from dashboard_utils import (
     get_default_date,
-    get_relevant_fixtures,
-    get_club_teams_that_weekend,
+    get_fixtures_for_date,
+    get_club_teams,
     get_opposition_club_id,
-    get_opposition_saturday_fixtures,
+    get_club_saturday_fixtures,
 )
 
 PRIMARY_BLUE = "#1d1b5e"
@@ -130,7 +130,7 @@ def _get_team_fixtures(
     pc, oppo_club_id: int, oppo_team_id: int, selected_date: str
 ) -> pd.DataFrame:
     """All completed Saturday league fixtures for a specific opposition team, 2 seasons."""
-    all_fixtures = get_opposition_saturday_fixtures(pc, oppo_club_id, selected_date)
+    all_fixtures = get_club_saturday_fixtures(pc, oppo_club_id, selected_date)
     if all_fixtures.empty:
         return all_fixtures
     oppo_team_id = int(oppo_team_id)
@@ -392,11 +392,11 @@ with _date_btn_col:
 if _picked_date and (st.session_state.osa_date_clicked):
     st.session_state.osa_selected_date = _picked_date.strftime("%Y-%m-%d")
 
-    st.session_state.osa_fixtures = get_relevant_fixtures(
+    st.session_state.osa_fixtures = get_fixtures_for_date(
         playcricket_object, st.session_state.osa_selected_date
     )
-    st.session_state.osa_teams_lookup = get_club_teams_that_weekend(
-        st.session_state.osa_fixtures
+    st.session_state.osa_teams_lookup = get_club_teams(
+        st.session_state.osa_fixtures, float(st.secrets['site_id'])
     )
 
     st.divider()

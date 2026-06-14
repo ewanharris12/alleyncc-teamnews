@@ -12,8 +12,8 @@ import streamlit as st
 from playcric import alleyn
 from dashboard_utils import (
     get_default_date,
-    get_relevant_fixtures,
-    get_club_teams_that_weekend,
+    get_fixtures_for_date,
+    get_club_teams,
     get_opposition_club_id,
     generate_player_stats,
     render_player_card,
@@ -134,10 +134,12 @@ if _date_confirmed or st.session_state.button_clicked:
     if _picked_date:
         st.session_state.selected_date = _picked_date.strftime('%Y-%m-%d')
 
-        st.session_state.fixtures = get_relevant_fixtures(
+        st.session_state.fixtures = get_fixtures_for_date(
             playcricket_object, st.session_state.selected_date
         )
-        st.session_state.teams_lookup = get_club_teams_that_weekend(st.session_state.fixtures)
+        st.session_state.teams_lookup = get_club_teams(
+            st.session_state.fixtures, float(st.secrets['site_id'])
+        )
 
         st.divider()
         st.info("**Step 2:** Select which Alleyn team you want to view opposition stats for, then confirm.")
@@ -220,7 +222,8 @@ if _date_confirmed or st.session_state.button_clicked:
 
                 agg_bat, agg_bowl, opposition_players, seasons = generate_player_stats(
                     playcricket_object, int(selected_fixture['id']), st.session_state.selected_date,
-                    player_id_override=st.session_state.manual_player_ids
+                    club_id=st.session_state.oppo_club_id,
+                    player_id_override=st.session_state.manual_player_ids,
                 )
 
                 st.divider()
